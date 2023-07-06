@@ -1,0 +1,34 @@
+#Must have AuditLog.Read.All, User.Read.All Permissions
+
+Connect-MgGraph
+Select-MgProfile -Name "beta"
+
+function Get-MFAStatus-Graph {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$UserPrincipalName
+    )
+
+    $Device = Get-MgUserAuthenticationMethod -UserId $UserPrincipalName
+
+    $DistinctTypes = $Device | Where-Object {
+        $type = $_.AdditionalProperties['@odata.type']
+        $type -ne '#microsoft.graph.passwordAuthenticationMethod' -and
+        $type -ne '#microsoft.graph.passwordlessMicrosoftAuthenticatorAuthenticationMethod'
+    } | ForEach-Object {
+        $_.AdditionalProperties['@odata.type']
+    } | Select-Object -Unique
+
+    if ($DistinctTypes.Count -ne 0) {
+        $MFA_Status = "Enabled"
+    } else {
+        $MFA_Status = "Disabled"
+    }
+
+    return $MFA_Status
+}
+
+#Usage
+$upn = ''
+$MFA_Status = Get-MFAStatus-Graph -UserPrincipalName $upn
+Write-Host "$upn MFA is $MFA_Status"
