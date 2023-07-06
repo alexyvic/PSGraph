@@ -14,7 +14,7 @@ function Get-MFAStatus-Graph {
     $DistinctTypes = $UserMFA | Where-Object {
         $type = $_.AdditionalProperties['@odata.type']
         $type -ne '#microsoft.graph.passwordAuthenticationMethod' -and
-        $type -ne '#microsoft.graph.passwordlessMicrosoftAuthenticatorAuthenticationMethod'
+        $type -ne '#microsoft.graph.windowsHelloForBusinessAuthenticationMethod'
     } | ForEach-Object {
         $_.AdditionalProperties['@odata.type']
     } | Select-Object -Unique
