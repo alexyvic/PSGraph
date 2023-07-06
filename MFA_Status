@@ -9,9 +9,9 @@ function Get-MFAStatus-Graph {
         [string]$UserPrincipalName
     )
 
-    $Device = Get-MgUserAuthenticationMethod -UserId $UserPrincipalName
+    $UserMFA = Get-MgUserAuthenticationMethod -UserId $UserPrincipalName
 
-    $DistinctTypes = $Device | Where-Object {
+    $DistinctTypes = $UserMFA | Where-Object {
         $type = $_.AdditionalProperties['@odata.type']
         $type -ne '#microsoft.graph.passwordAuthenticationMethod' -and
         $type -ne '#microsoft.graph.passwordlessMicrosoftAuthenticatorAuthenticationMethod'
