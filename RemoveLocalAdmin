@@ -1,0 +1,41 @@
+
+
+# Assuming all Administrator named accounts have been disabled
+
+# List Administrator users
+$output = net localgroup administrators
+$members = $output.Trim() -split '\r?\n'
+$administrators = $members[6..($members.Length - 3)]
+
+# Exclude Administrator from the $administrators list if it's disabled
+$local_admin2remove = $administrators | Where-Object { $_ -ne 'Administrator' -and $_ -notlike 'defaultuser*' }
+
+if ($local_admin2remove.Count -ne 0) {
+    Write-Host 'Processing Deleting'
+    # Loop through the list of administrators and remove them from the local Administrators group
+    foreach ($admin in $local_admin2remove) {
+        Remove-LocalGroupMember -Group "Administrators" -Member $admin
+        Write-Host "Removed user $admin from Administrators group"
+    }
+} else {
+    # Start reporting
+    Write-Host "No need to remove"
+    exit
+}
+
+# Check again after removing administrators
+$output = net localgroup administrators
+$members = $output.Trim() -split '\r?\n'
+$administrators_after = $members[6..($members.Length - 3)]
+
+$local_admin2remove_after = $administrators_after | Where-Object { $_ -ne $adminUser.Name -and $_ -notlike 'defaultuser*' }
+
+if ($local_admin2remove_after.Count -eq 0) {
+    # Start reporting
+    Write-Host "All administrators have been removed. Reporting..."
+} else {
+    #$Report = $local_admin2remove_after
+    Write-Host "Remaining administrators: $local_admin2remove_after.Count"
+    # Continue with further processing or reporting logic
+}
+
