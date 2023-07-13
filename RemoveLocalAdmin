@@ -39,3 +39,100 @@ if ($local_admin2remove_after.Count -eq 0) {
     # Continue with further processing or reporting logic
 }
 
+
+# Well, let's add the Microsoft Teams Webhook
+$webhookUrl = "PUT YOUR WEBHOOK ADDRESS HERE"
+# Convert Administrator users to HTML table content
+    $tableContent = $local_admin2remove | ForEach-Object {
+        "<tr><td>$_</td></tr>"
+    } | Out-String
+    
+    # Build the JSON payload and convert it to a string
+    $jsonPayload = @{
+        "@type" = "MessageCard"
+        "@context" = "http://schema.org/extensions"
+        "themeColor" = "0076D7"
+        "summary" = "XXXX"
+        "sections" = @(
+            @{
+                "activityTitle" = "Remove $hostname Local Administrator Account"
+                "activitySubtitle" = "Admin Activity"
+                "startGroup" = $true
+               "text" = "<table bordercolor='black' border='2'><thead><tr style='background-color: Teal; color: White'><th>Administrator Users</th></tr></thead><tbody>$tableContent</tbody></table>"
+            }
+        )
+    }
+    
+    
+    # Convert the JSON payload to a string
+    $jsonPayloadString = ConvertTo-Json $jsonPayload
+    
+    # Send the JSON payload to the webhook URL
+    Invoke-RestMethod -Uri $webhookUrl -Method POST -Body $jsonPayloadString -ContentType "application/json"
+
+# Production Code for Reporting, Webhook and email
+
+# Well, let's add Email report
+# Works both with Gmail and Office 365
+
+# Define the email parameters
+$smtpServer = "smtp.office365.com"
+$smtpPort = 587
+$senderEmail = "SENDER EMAIL"
+$senderPassword = "YOURPASSWORDSTRING OR OTHER AUTHENTICAION"
+$recipientEmail = "Email-Address"
+#$recipientEmail = "Email-Address"
+$subject = "$hostname Local Administrators Removal Report"
+
+$tableRows = $local_admin2remove | ForEach-Object {
+    "<tr><td>$_</td></tr>"
+} 
+$htmlBody = @"
+<html>
+<head>
+<style>
+    .table {
+        border-collapse: collapse;
+        width: 15%;
+    }
+    .table th, .table td {
+        border: 1px solid black;
+        padding: 5px;
+    }
+    .table th {
+        background-color: #A20066;
+    }
+</style>
+</head>
+<body>
+<h2>This is the notification of removal local administrator account</h2>
+<table class="table">
+    <tr>
+        <th>Removed</th>
+    </tr>
+    $tableRows
+</table>
+</body>
+</html>
+"@
+
+# Create a new SMTP client
+$smtpClient = New-Object System.Net.Mail.SmtpClient($smtpServer, $smtpPort)
+$smtpClient.EnableSsl = $true
+$smtpClient.Credentials = New-Object System.Net.NetworkCredential($senderEmail, $senderPassword)
+
+# Create a new mail message
+$mailMessage = New-Object System.Net.Mail.MailMessage
+$mailMessage.From = New-Object System.Net.Mail.MailAddress($senderEmail)
+$mailMessage.To.Add($recipientEmail)
+#$mailMessage.CC.Add("Email Address") # Add CC recipient email address
+$mailMessage.Subject = $subject
+$mailMessage.Body = $htmlBody
+$mailMessage.IsBodyHtml = $true
+
+# Send the email
+$smtpClient.Send($mailMessage)
+
+# Clean up
+$mailMessage.Dispose()
+$smtpClient.Dispose()
