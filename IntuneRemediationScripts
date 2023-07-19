@@ -1,0 +1,68 @@
+# Connect to Microsoft Graph with the required scope
+Connect-MgGraph -Scopes "DeviceManagementConfiguration.Read.All"
+
+# Define the request URL Another is for the Remendation Scripts
+$requestUrl = "https://graph.microsoft.com/beta/deviceManagement/deviceHealthScripts?$select=*"
+
+# Send the request and retrieve the response
+$response = Invoke-MgGraphRequest -Method GET $requestUrl
+
+# Extract the sign-in activities from the response
+$Scripts = $response.value
+
+# Create an array to store the combined data
+$combinedData = @()
+
+# This is used to summary and download Intune Remediation Scripts if you don't have them
+# Create a directory to store the script files (optional)
+$scriptDirectory = 'C:\Temp\Scripts'
+New-Item -ItemType Directory -Path $scriptDirectory -Force | Out-Null
+
+# Loop through each dataset and store the relevant information in the combined array
+foreach ($dataset in $Scripts) {
+        #Extract the Powershell Script
+        $appUrl = "https://graph.microsoft.com/beta//deviceManagement/deviceHealthScripts/$($dataset.id)"
+        $value = Invoke-MgGraphRequest -Method GET $appUrl
+        # Create a subfolder under $scriptDirectory with the name of $dataset.displayName
+        $subfolderPath = Join-Path $scriptDirectory -ChildPath $dataset.displayName
+        $subfolderfile_detection = $subfolderPath + "\Detection.ps1"
+        $subfolderfile_remediation = $subfolderPath + "\Remediation.ps1"
+        New-Item -ItemType File -Path $subfolderfile_detection -Force | Out-Null
+        New-Item -ItemType File -Path $subfolderfile_remediation -Force | Out-Null
+        $value.detectionScriptContent
+        $value.remediationScriptContent 
+        $Base64_detection = [Convert]::FromBase64String($value.detectionScriptContent)
+        $Base64_remediation = [Convert]::FromBase64String($value.remediationScriptContent)
+        $scriptContent_detection = [System.Text.Encoding]::UTF8.GetString($Base64_detection)
+        $scriptContent_remediation = [System.Text.Encoding]::UTF8.GetString($Base64_remediation)
+        $scriptContent_detection | Out-File -FilePath $subfolderfile_detection -Encoding UTF8
+        $scriptContent_remediation | Out-File -FilePath $subfolderfile_remediation -Encoding UTF8
+
+    $data = [PSCustomObject]@{
+        'deviceHealthScriptType'   = $dataset.deviceHealthScript
+        'lastModifiedDateTime'     = $dataset.lastModifiedDateTime
+        'remediationScriptParameters' = $dataset.remediationScriptParameters
+        'version'                 = $dataset.version
+        'detectionScriptParameters' = $dataset.detectionScriptParameters
+        'createdDateTime'         = $dataset.createdDateTime
+        'enforceSignatureCheck'   = $dataset.enforceSignatureCheck
+        'remediationScriptContent' = $dataset.remediationScriptContent
+        'isGlobalScript'          = $dataset.isGlobalScript
+        'publisher'               = $dataset.publisher
+        'highestAvailableVersion' = $dataset.highestAvailableVersion
+        'roleScopeTagIds'         = $dataset.roleScopeTagIds
+        'detectionScriptContent'  = $dataset.detectionScriptContent
+        'id'                      = $dataset.id
+        'displayName'             = $dataset.displayName
+        'runAsAccount'            = $dataset.runAsAccount
+        'description'             = $dataset.description
+        'runAs32Bit'              = $dataset.runAs32Bit
+    }
+    $combinedData += $data
+}
+
+# Display the combined data in a table
+$combinedData | Format-Table -AutoSize
+
+# Export the combined data to a CSV file
+$combinedData | Export-Csv -Path 'C:\Temp\Intune_remediationScript_Scripts.csv' -NoTypeInformation
