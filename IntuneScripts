@@ -1,0 +1,51 @@
+# This is used to download all Powershell Scripts from Intune if you don't have a record of what's there
+# Connect to Microsoft Graph with the required scope
+Connect-MgGraph -Scopes "DeviceManagementConfiguration.Read.All"
+
+# Define the request URL Another is for the Remendation Scripts
+$requestUrl = "https://graph.microsoft.com/beta/deviceManagement/deviceManagementScripts?$select=*"
+# Send the request and retrieve the response
+$response = Invoke-MgGraphRequest -Method GET $requestUrl
+
+# Extract the sign-in activities from the response
+$Scripts = $response.value
+
+# Create an array to store the combined data
+$combinedData = @()
+
+# Create a directory to store the script files (optional)
+$scriptDirectory = 'C:\Temp\Scripts'
+New-Item -ItemType Directory -Path $scriptDirectory -Force | Out-Null
+
+# Loop through each dataset and store the relevant information in the combined array
+foreach ($dataset in $Scripts) {
+        #Extract the Powershell Script
+        $appUrl = "https://graph.microsoft.com/beta//deviceManagement/deviceManagementScripts/$($dataset.id)"
+        $value = Invoke-MgGraphRequest -Method GET $appUrl
+        $value.scriptContent
+        $Base64 = [Convert]::FromBase64String($value.scriptContent)
+        $scriptContent = [System.Text.Encoding]::UTF8.GetString($Base64)
+        $scriptPath = Join-Path $scriptDirectory -ChildPath ($dataset.fileName)
+        $scriptContent | Out-File -FilePath $scriptPath -Encoding UTF8
+    $data = [PSCustomObject]@{
+        'Name'                 = $dataset.Name
+        'roleScopeTagIds'      = $dataset.roleScopeTagIds
+        'id'                   = $dataset.id
+        'runAsAccount'         = $dataset.runAsAccount
+        'scriptContent'        = $dataset.scriptContent
+        'displayName'          = $dataset.displayName
+        'fileName'             = $dataset.fileName
+        'runAs32Bit'           = $dataset.runAs32Bit
+        'enforceSignatureCheck'= $dataset.enforceSignatureCheck
+        'description'          = $dataset.description
+        'lastModifiedDateTime' = $dataset.lastModifiedDateTime
+        'createdDateTime'      = $dataset.createdDateTime
+    }
+    $combinedData += $data
+}
+
+# Display the combined data in a table
+$combinedData | Format-Table -AutoSize
+
+# Export the combined data to a CSV file
+$combinedData | Export-Csv -Path 'C:\Temp\Intune_Scripts.csv' -NoTypeInformation
