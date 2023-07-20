@@ -1,0 +1,200 @@
+#20/7/2023
+# This is used to get userInformation not login more than 90 days
+Import-Module ActiveDirectory
+Connect-MgGraph
+        function Get-Users {
+        [CmdletBinding()]
+        param (
+            [Parameter()]
+            [string]$Select = "=id,accountEnabled,userPrincipalName,displayName,jobTitle,department,signInActivity,userType, createdDateTime,assignedLicenses,onPremisesSecurityIdentifier"
+        )
+        $uri = "https://graph.microsoft.com/beta/users?`$Select$Select"
+        $users = @()
+        $uriNext = $uri
+        # Loop through all the pages of results using paging
+        do {
+            $response = Invoke-GraphRequest -Method GET -Uri $uriNext -ErrorAction Stop
+            $users += $response.value
+            $uriNext = $response.'@odata.nextLink'
+        } while ($uriNext -ne $null)
+        return $users
+    }
+get-date    
+$aadlog = Get-Users 
+$aadlog | ConvertTo-Json -Depth 100 | Out-File -FilePath "C:\Temp\TEST\users.json"
+
+get-date
+Write-Host "Commpleted query AAD Users"
+$json = Get-Content -Raw -Path "C:\Temp\TEST\users.json" | ConvertFrom-Json
+
+# Now we generate the base aad users list
+
+$users = $json | Select-Object id, accountEnabled, userPrincipalName, displayName, jobTitle, department, userType, createdDateTime, `
+    assignedLicenses, onPremisesSecurityIdentifier, @{Name='lastSignInDateTimeAAD'; Expression={$_.signInActivity.lastSignInDateTime}},@{Name='lastLogonDateAD'; Expression={$nul}},@{Name='LastSignIn'; Expression={$_.signInActivity.lastSignInDateTime}},@{Name='Manager'; Expression={$null}},@{Name='samAccountName'; Expression={$null}}
+
+
+# Update AAD time from UTC to AEST
+
+$aestTimeZoneId = 'AUS Eastern Standard Time'
+$aestTimeZone = [System.TimeZoneInfo]::FindSystemTimeZoneById($aestTimeZoneId)
+$updatedUsers = @()
+$users |foreach {
+    #$_.Id
+    if ($_.lastSignInDateTimeAAD -eq $null){
+        $utcDateTime = $null
+        #Write-Host "utctime doesn't exist"
+    }
+    else {
+        $utcDateTime = $_.lastSignInDateTimeAAD
+    }
+    #$utcDateTime
+    $aestTimeZoneId = 'AUS Eastern Standard Time'
+    $aestTimeZone = [System.TimeZoneInfo]::FindSystemTimeZoneById($aestTimeZoneId)
+
+    if ($utcDateTime -ne $null) {
+        $aestDateTime = [System.TimeZoneInfo]::ConvertTimeFromUtc($utcDateTime, $aestTimeZone)
+        #$aestDateTime
+        $_.lastSignInDateTimeAAD = $aestDateTime
+        $_.LastSignIn = $aestDateTime
+    }
+    else {
+        $_.lastSignInDateTimeAAD = 'NotAvailable'
+        $_.LastSignIn = 'NotAvailable'
+    }
+
+    $updatedUsers += $_
+    #Start-Sleep -Seconds 0.1
+}
+
+$updatedUsers | ConvertTo-Json -Depth 100 | Out-File -FilePath "C:\Temp\TEST\updatedusers.json"
+$updatedUsers.count
+Write-Host "Updated TimeZone"
+
+$aadonly = $updatedUsers | Where-Object { $_.onPremisesSecurityIdentifier -eq $null } 
+
+$aadonly | ConvertTo-Json -Depth 100 | Out-File -FilePath "C:\Temp\TEST\aadonly.json"
+
+$aadonly = Get-Content -Raw -Path "C:\Temp\TEST\aadonly.json" | ConvertFrom-Json
+
+$hybrid = $updatedUsers | Where-Object { $_.onPremisesSecurityIdentifier -ne $null }
+
+Write-Host "There are Total $($updatedUsers.count) Users. $($aadonly.count) AAD Only Users and $($hybrid.count) Hybrid Users."
+
+$adresult = $hybrid | ForEach-Object {
+   
+    $user = Get-ADUser -Identity $_.onPremisesSecurityIdentifier -Properties DisplayName, EmailAddress, Enabled, Manager, lastLogonDate, samAccountName |
+            Select-Object userPrincipalName, Manager, lastLogonDate, samAccountName
+
+    # Check if each property is null and replace it with "NotAvailable"
+    
+    if ($user.lastLogonDate -eq $null) {
+        $user.lastLogonDate = 'NotAvailable'
+    }    
+    $user
+}
+$adresult.count
+Write-Host "Competed Query On Premise"
+$adresult | ConvertTo-Json -Depth 100 | Out-File -FilePath "C:\Temp\TEST\adresult.json"
+$adresult = Get-Content -Raw -Path "C:\Temp\TEST\adresult.json" | ConvertFrom-Json
+
+$hybridresult = $hybrid | ForEach-Object {
+    $userPrincipalName = $_.userPrincipalName
+    $lastSignInDateTimeAAD = $_.lastSignInDateTimeAAD
+    $id = $_.id
+    $accountEnabled = $_.accountEnabled
+    $displayName = $_.displayName
+    $jobTitle = $_.jobTitle
+    $department = $_.department
+    $userType = $_.userType
+    $createdDateTime = $_.createdDateTime
+    $assignedLicenses = $_.assignedLicenses
+    $onPremisesSecurityIdentifier = $_.onPremisesSecurityIdentifier
+
+    # Retrieve Manager, lastLogonDate, and samAccountName from $adresult
+    $queryUser = $adresult | Where-Object { $_.userPrincipalName -eq $userPrincipalName }
+    #$adresult | Select -First 1
+    $manager = $queryUser.Manager
+    $lastLogonDateAD = $queryUser.lastLogonDate
+    $samAccountName = $queryUser.samAccountName
+
+    if ($lastSignInDateTimeAAD -eq 'NotAvailable' -and $lastLogonDateAD -eq 'NotAvailable') {
+        $lastSignIn = 'NotAvailable'
+    }
+    elseif ($lastSignInDateTimeAAD -ne 'NotAvailable' -and $lastLogonDateAD -eq 'NotAvailable') {
+        $lastSignIn = $lastSignInDateTimeAAD
+    }
+    elseif ($lastSignInDateTimeAAD -eq 'NotAvailable' -and $lastLogonDateAD -ne 'NotAvailable') {
+        $lastSignIn = $lastLogonDateAD
+    }
+    else {
+        if ($lastSignInDateTimeAAD -lt $lastLogonDateAD) {
+            $lastSignIn = $lastLogonDateAD
+        }
+        else {
+            $lastSignIn = $lastSignInDateTimeAAD
+        }
+    }
+
+    [PSCustomObject]@{
+        userPrincipalName = $userPrincipalName
+        lastSignInDateTimeAAD = $lastSignInDateTimeAAD
+        lastLogonDateAD = $lastLogonDateAD
+        LastSignIn = $lastSignIn
+        id = $id
+        accountEnabled = $accountEnabled
+        displayName = $displayName
+        jobTitle = $jobTitle
+        department = $department
+        userType = $userType
+        createdDateTime = $createdDateTime
+        assignedLicenses = $assignedLicenses
+        onPremisesSecurityIdentifier = $onPremisesSecurityIdentifier
+        Manager = $manager
+        samAccountName = $samAccountName
+    }
+}
+
+$hybridresult.count
+Write-Host "Competed Query Hybrid"
+$hybridresult | ConvertTo-Json -Depth 100 | Out-File -FilePath "C:\Temp\TEST\hybridresult.json"
+$hybridresult = Get-Content -Raw -Path "C:\Temp\TEST\hybridresult.json" | ConvertFrom-Json
+$finalResult = $aadonly + $hybridresult
+
+# Save the modified object to JSON file
+$finalResult | ConvertTo-Json -Depth 100 | Out-File -FilePath "C:\Temp\TEST\finaluserstest.json"
+
+$finalResult = Get-Content -Raw -Path "C:\Temp\TEST\finaluserstest.json" | ConvertFrom-Json
+
+$finalResult | Select createdDateTime, id, displayName, userPrincipalName, userType,accountEnabled, LastSignIn, lastLogonDateAD, lastSignInDateTimeAAD, Manager | Export-Csv -Path 'C:\Temp\Test\User_SignIns.csv' -NoTypeInformation
+
+$finalResult = Import-Csv -Path "C:\Temp\Test\User_SignIns.csv"
+
+$Today = Get-Date
+
+
+$filteredUsers_Enabled = $finalResult | Where-Object accountEnabled -eq $true
+Write-Host "Filter Enabled Users"
+$filteredUsers_Enabled | Export-Csv -Path 'C:\Temp\Test\filteredUsers_Enabled.csv' -NoTypeInformation
+
+# Assuming $filteredUsers_Enabled is already populated with a collection of users
+$Today = Get-Date
+
+# Iterate through each user in the $filteredUsers_Enabled collection
+$NotSignInfor90days = foreach ($user in $filteredUsers_Enabled) {
+    # Check if the "LastSignIn" property of the current user is 'NotAvailable'
+    if ($user.LastSignIn -eq 'NotAvailable') {
+        # Perform actions when LastSignIn is 'NotAvailable'
+        $user
+    } else {
+        # Check if the "LastSignIn" property of the current user is more than 30 days ago from today
+        # Convert the "LastSignIn" to DateTime for comparison
+        if ([DateTime]$user.LastSignIn -lt $Today.AddDays(-90)) {
+            # Perform actions when LastSignIn is more than 30 days ago
+            $user
+        }
+    }
+}
+($NotSignInfor90days | Where LastSignIn -ne 'NotAvailable').count
+Write-Host "Filter 90 days not signIn Users"
+$NotSignInfor90days | Where usertype -ne 'Guest'| Export-Csv -Path 'C:\Temp\Test\NotSignInfor90days.csv' -NoTypeInformation
+Get-Date
