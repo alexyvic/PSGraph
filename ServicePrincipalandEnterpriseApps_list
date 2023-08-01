@@ -1,0 +1,51 @@
+#Must have the right permission
+# Refer to https://graphpermissions.merill.net/permission/PrivilegedAccess.ReadWrite.AzureResources#delegate-permission
+# Fetch all service principals using Microsoft Graph API
+$Select = "=id,displayName"
+$uri = "https://graph.microsoft.com/v1.0/servicePrincipals?$Select$Select"
+$servicePrincipals = @()
+$uriNext = $uri
+
+# Loop through all the pages of results using paging
+do {
+    $response = Invoke-GraphRequest -Method GET -Uri $uriNext -ErrorAction Stop
+    $servicePrincipals += $response.value
+    $uriNext = $response.'@odata.nextLink'
+} while ($uriNext -ne $null)
+
+# Convert the array of hashtables into a list of custom PowerShell objects
+$servicePrincipalsList = $servicePrincipals | ForEach-Object {
+    [PSCustomObject]@{
+        id = $_.id
+        displayName = $_.displayName
+    }
+} | Sort-Object displayName
+
+# Display the sorted service principals
+$servicePrincipalsList | Format-Table
+
+
+
+$Select = "=id,appId,displayName"
+$uri = "https://graph.microsoft.com/beta/applications?`$Select$Select"
+$EnterpriseApps = @()
+$uriNext = $uri
+# Loop through all the pages of results using paging
+do {
+   $response = Invoke-GraphRequest -Method GET -Uri $uriNext -ErrorAction Stop
+   $EnterpriseApps += $response.value
+   $uriNext = $response.'@odata.nextLink'
+   } while ($uriNext -ne $null)
+$EnterpriseApps.Values.length
+
+# Convert the array of hashtables into a list of custom PowerShell objects
+$enterpriseAppsList = $EnterpriseApps | ForEach-Object {
+    [PSCustomObject]@{
+        id = $_.id
+        appId = $_.appId
+        displayName = $_.displayName
+    }
+} | Sort-Object displayName
+
+# Display the sorted enterprise applications
+$enterpriseAppsList | Format-Table
