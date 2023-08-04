@@ -1,0 +1,58 @@
+# Import the Az.Automation module
+Import-Module -Name Az.Automation
+
+Connect-AzAccount
+
+# List all automation modules in a specific Automation Account// New version will loop all Automation Accounts
+$AutomationAccountName = "{AutomationAccountName}"
+$ResourceGroupName = "{ResourceGroupName}"
+$result = Get-AzAutomationModule -AutomationAccountName $AutomationAccountName -ResourceGroupName $ResourceGroupName
+
+# Define the Get-LatestModuleVersion function
+function Get-LatestModuleVersion {
+    param (
+        [string]$ModuleName
+    )
+
+    $moduleInfo = Invoke-RestMethod -Uri "https://www.powershellgallery.com/api/v2/FindPackagesById()?id='$ModuleName'" -Method Get
+
+    $numberDotRegex = '[0-9\.]+'
+    $latestVersion = $moduleInfo | Where-Object {$_.Properties.Version -match $numberDotRegex} | ForEach-Object {
+        try {
+            [Version]$parsedVersion = $_.Properties.Version
+            if ($parsedVersion -ne $null) {
+                [PSCustomObject]@{
+                    Id = $_.Properties.Id
+                    Version = $parsedVersion
+                }
+            }
+        } catch {
+            Write-Host "Skipping version $_.Properties.Version due to incorrect format."
+        }
+    } | Sort-Object {[Version]$_.Version} -Descending | Select-Object -First 1
+
+
+    return $latestVersion
+}
+
+foreach ($module in $result) {
+    $latestVersion = Get-LatestModuleVersion -ModuleName $module.Name
+
+    # Check if the latest version is available
+    if ($latestVersion) {
+        $latestVersionNumber = $latestVersion.Version
+    } elseif ($module.Version -match '^0\.0$|^1\.0$') {
+        $latestVersionNumber = $module.Version
+    } else {
+        $latestVersionNumber = "Not available"
+    }
+
+    # Add the "LatestVersion" column to $result
+    $result | Where-Object { $_.Name -eq $module.Name } | ForEach-Object {
+        $_ | Add-Member -NotePropertyName "LatestVersion" -NotePropertyValue $latestVersionNumber -Force
+    }
+}
+
+# Display the updated $result with the "LatestVersion" column
+$report = $result | Select AutomationAccountName, Name, IsGlobal, Version, LatestVersion
+$report
