@@ -1,0 +1,46 @@
+# This is used to audit devices through Meraki API
+# Haven't able to test if more than 1000 devices / require paging
+
+$apiKey = "APIKEY"
+$headers = @{
+    "X-Cisco-Meraki-API-Key" = $apiKey
+}
+
+$orgListUrl = "https://api.meraki.com/api/v1/organizations/"
+$orgList = Invoke-RestMethod -Uri $orgListUrl -Headers $headers -Method Get
+
+# Initialize the array to hold all devices
+$Totaldevices = @()
+
+#Query_day no more than 31 days
+$query_days = 31
+$query_seconds = $query_days * 86400
+# Loop through each organization in the orgList
+foreach ($org in $orgList) {
+    $orgId = $org.id
+
+    $networklistUrl = "https://api.meraki.com/api/v1/organizations/$orgId/networks"
+    
+    $networklist = Invoke-RestMethod -Uri $networklistUrl -Headers $headers -Method Get
+
+    # Loop through each network in the networklist
+    foreach ($network in $networklist) {
+        $networkId = $network.id
+
+        $devicelistUrl = "https://api.meraki.com/api/v1/networks/$networkId/clients?perPage=1000&timespan=$query_seconds"
+              
+        $devicelist = Invoke-RestMethod -Uri $devicelistUrl -Headers $headers -Method Get
+        Write-Host "For $($network.name) $($networkId) had $($devicelist.count) devices in last $($query_days) days" -ForegroundColor Yellow -BackgroundColor Black
+        if ($devicelist.count -gt 1000){
+        Write-Host "For $($network.name) $($networkId) exceed 1000 devices in last $($query_days) days" -ForegroundColor Red -BackgroundColor Black
+        }
+        # Add location information to each device in the list
+        $devicelist | ForEach-Object {
+            $_ | Add-Member -MemberType NoteProperty -Name "Location" -Value $network.name
+        }
+
+        # Append the devices to the Totaldevices array
+        $Totaldevices += $devicelist
+    }
+}
+$Totaldevices
