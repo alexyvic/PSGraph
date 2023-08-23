@@ -1,0 +1,29 @@
+#This is used to query Managed Meraki Devices
+
+
+#V1.0 Issue haven't include paging
+
+$apiKey = "YOURAPIKEY"
+$headers = @{
+    "X-Cisco-Meraki-API-Key" = $apiKey
+}
+
+$orgListUrl = "https://api.meraki.com/api/v1/organizations/"
+$orgList = Invoke-RestMethod -Uri $orgListUrl -Headers $headers -Method Get
+
+# Initialize the array to hold all managed devices
+$managedDeviceList = @()
+
+# Loop through each organization in the orgList
+foreach ($org in $orgList) {
+    $orgId = $org.id
+    $orgId
+    $managedDeviceUri = "https://api.meraki.com/api/v1/organizations/$orgId/devices"
+    $managedDevices = Invoke-RestMethod -Uri $managedDeviceUri -Headers $headers -Method Get
+    #$managedDevices.count
+    # Append the managed devices to the managedDeviceList array
+    $managedDeviceList += $managedDevices
+}
+
+# Display the list of managed devices
+$report = $managedDeviceList 
